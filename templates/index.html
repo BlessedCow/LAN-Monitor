@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>LAN Monitor</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+      table, th, td {
+        border: 1px solid #666;
+        border-collapse: collapse;
+        padding: 0.5em;
+      }
+      th {
+        background-color: #333;
+        color: white;
+      }
+      .ssid-info {
+        margin-bottom: 1em;
+        font-style: italic;
+      }
+    </style>
+</head>
+<body>
+    <h1>LAN Monitor Dashboard</h1>
+
+    <p class="ssid-info">
+      Connected via: <strong>{{ ssid }}</strong>
+    </p>
+
+    <table>
+        <tr>
+            <th>IP Address</th>
+            <th>MAC Address</th>
+            <th>Vendor</th>
+            <th>Latency (ms)</th>
+        </tr>
+        {% for ip, info in devices.items() %}
+            {% set latency = info.latency %}
+            {% set macaddr = info.mac %}
+            {% set vendor  = info.vendor %}
+
+            {% if latency <= 50 %}
+                {% set row_color = "#adebb3" %}
+            {% elif latency <= 100 %}
+                {% set row_color = "#e6e8a1" %}
+            {% elif latency <= 150 %}
+                {% set row_color = "#d9a65a" %}
+            {% else %}
+                {% set row_color = "#ce3c3c" %}
+            {% endif %}
+
+            <tr style="background-color: {{ row_color }};">
+                <td>{{ ip }}</td>
+                <td>{{ macaddr or "—" }}</td>
+                <td>{{ vendor or "—" }}</td>
+                <td>{{ latency }}</td>
+            </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
