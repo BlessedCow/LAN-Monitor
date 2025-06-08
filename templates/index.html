@@ -4,19 +4,30 @@
     <title>LAN Monitor</title>
     <link rel="stylesheet" href="/static/style.css">
     <style>
-      table, th, td {
-        border: 1px solid #666;
-        border-collapse: collapse;
-        padding: 0.5em;
-      }
-      th {
-        background-color: #333;
-        color: white;
-      }
-      .ssid-info {
-        margin-bottom: 1em;
-        font-style: italic;
-      }
+        table, th, td {
+            border: 1px solid #666;
+            border-collapse: collapse;
+            padding: 0.5em;
+        }
+        th {
+            background-color: #333;
+            color: white;
+        }
+        .ssid-info {
+            margin-bottom: 1em;
+            font-style: italic;
+        }
+        input[type="text"] {
+            padding: 3px;
+            font-size: 0.9em;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+        button {
+            padding: 3px 6px;
+            margin-left: 5px;
+            font-size: 0.85em;
+        }
     </style>
 </head>
 <body>
@@ -32,6 +43,7 @@
             <th>MAC Address</th>
             <th>Vendor</th>
             <th>Latency (ms)</th>
+            <th>Label</th>
         </tr>
         {% for ip, info in devices.items() %}
             {% set latency = info.latency %}
@@ -53,6 +65,17 @@
                 <td>{{ macaddr or "—" }}</td>
                 <td>{{ vendor or "—" }}</td>
                 <td>{{ latency }}</td>
+                <td>
+                    {% if macaddr %}
+                    <form action="/set_label" method="POST" style="display:inline;">
+                        <input type="hidden" name="mac" value="{{ macaddr }}">
+                        <input type="text" name="label" value="{{ labels.get(macaddr | lower, '') }}" size="15">
+                        <button type="submit">✔</button>
+                    </form>
+                    {% else %}
+                        —
+                    {% endif %}
+                </td>
             </tr>
         {% endfor %}
     </table>

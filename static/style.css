@@ -12,3 +12,17 @@ th, td {
     border: 1px solid #ccc;
     text-align: left;
 }
+
+input[type="text"] {
+    padding: 3px;
+    font-size: 0.9em;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+}
+button {
+    padding: 3px 6px;
+    margin-left: 5px;
+    font-size: 0.85em;
+    cursor: pointer;
+}
+

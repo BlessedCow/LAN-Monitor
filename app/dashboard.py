@@ -1,5 +1,5 @@
 # app/dashboard.py
-
+from app.utils import load_labels, save_labels
 from flask import Flask, render_template
 from app.scanner import scan_network_with_mac
 import platform
@@ -121,8 +121,18 @@ def home():
     sorted_devices = {ip: info for ip, info in sorted_list}
 
     ssid = get_current_ssid()
-    return render_template("index.html", devices=sorted_devices, ssid=ssid)
+    labels = load_labels()  # ← Load labels from JSON
+    return render_template("index.html", devices=sorted_devices, ssid=ssid, labels=labels)
 
+@app.route('/set_label', methods=['POST'])
+def set_label():
+    mac = request.form.get('mac', '').lower()
+    label = request.form.get('label', '')
+    labels = load_labels()
+    labels[mac] = label
+    save_labels(labels)
+    return redirect('/')
 
 def run():
     app.run(host="0.0.0.0", port=5000)
+    
