@@ -23,7 +23,7 @@
   - 0–50ms → 🟩 Green (#adebb3)
   - 51–100ms → 🟨 Yellow (#e6e8a1)
   - 101–150ms → 🟧 Orange (#d9a65a)
-  - >150ms → 🟥 Red (#ce3c3c)
+  - 150ms → 🟥 Red (#ce3c3c)
   
 ### 🔍 Vulnerability Scanning
 - Identify open ports and match them against known vulnerabilities from NVD and CISA.
