@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Port Scan Results</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>Port Scan Results for {{ ip }}</h1>
+
+    <h3>Open TCP Ports:</h3>
+    {% if tcp %}
+        <ul>
+        {% for port in tcp %}
+        <li>TCP {{ port }}{% if port in cve_map %} — <strong>{{ cve_map[port] }}</strong>{% endif %}</li>
+        {% endfor %}
+        </ul>
+    {% else %}
+        <p>No open TCP ports found.</p>
+    {% endif %}
+
+    <h3>Open UDP Ports:</h3>
+    {% if udp %}
+        <ul>
+        {% for port in udp %}
+            <li>UDP {{ port }}{% if port in cve_map %} — <strong>{{ cve_map[port] }}</strong>{% endif %}</li>
+        {% endfor %}
+        </ul>
+    {% else %}
+        <p>No open UDP ports found.</p>
+    {% endif %}
+
+    <br>
+    <a href="/">← Back to Dashboard</a>
+</body>
+</html>

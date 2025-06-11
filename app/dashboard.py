@@ -2,7 +2,10 @@
 
 from flask import Flask, render_template, request, redirect
 from app.scanner import scan_network_with_mac
+from app.scanner import scan_tcp_ports, scan_udp_ports
 from app.utils import load_labels, save_labels
+from app.utils import load_open_ports, save_open_ports
+from app.vuln_lookup import PORT_SERVICE_MAP, query_nvd, load_cisa_kev
 import platform
 import subprocess
 import re
@@ -116,6 +119,112 @@ def set_label():
     labels[mac] = label
     save_labels(labels)
     return redirect("/")
+
+@app.route("/scan_ports", methods=["POST"])
+def scan_ports():
+    ip = request.form.get("ip")
+    port_input = request.form.get("ports", "")
+
+    try:
+        ports = [int(p.strip()) for p in port_input.split(",") if p.strip().isdigit()]
+    except ValueError:
+        ports = []
+
+    if not ports:
+        ports = [22, 80, 443, 445, 3389]  # fallback default ports
+
+    # Run the scanners
+    open_tcp = scan_tcp_ports(ip, ports)
+    open_udp = scan_udp_ports(ip, ports)
+
+    save_open_ports({ip: {"tcp": open_tcp, "udp": open_udp}})
+
+    return render_template("port_results.html", ip=ip, tcp=open_tcp, udp=open_udp, cve_map={})
+
+@app.route("/vulnerabilities")
+def vulnerabilities():
+    min_cvss = float(request.args.get("min_cvss", 0))
+    cisa_only = request.args.get("cisa", "false").lower() == "true"
+
+    port_data = load_open_ports()
+    cisa_kev = load_cisa_kev()
+    labels = load_labels()
+    cve_results = {}
+
+    for ip, ports in port_data.items():
+        cve_results[ip] = []
+        for port in ports.get("tcp", []) + ports.get("udp", []):
+            service = PORT_SERVICE_MAP.get(port)
+            if not service:
+                continue
+            nvd_cves = query_nvd(service, max_results=5)
+            for cve in nvd_cves:
+                try:
+                    cvss = float(cve.get("cvss", 0))
+                except:
+                    cvss = 0.0
+                is_exploited = cve["cve_id"].upper() in cisa_kev
+                if (cvss >= min_cvss) and (not cisa_only or is_exploited):
+                    cve_results[ip].append({
+                        "port": port,
+                        "service": service,
+                        "cve_id": cve["cve_id"],
+                        "description": cve["description"],
+                        "cvss": cve.get("cvss", "N/A"),
+                        "published": cve.get("published", "N/A"),
+                        "cisa": is_exploited
+                    })
+
+    return render_template("vulnerabilities.html", results=cve_results, labels=labels)
+
+@app.route("/scan_all_ports")
+def scan_all_ports():
+    devices = scan_network_with_mac()
+    port_data = {}
+
+    common_ports = [22, 80, 443, 445, 3389]
+
+    for ip in devices:
+        tcp = scan_tcp_ports(ip, common_ports)
+        udp = scan_udp_ports(ip, common_ports)
+        port_data[ip] = {"tcp": tcp, "udp": udp}
+
+    save_open_ports(port_data)
+    return redirect("/vulnerabilities")
+
+@app.route("/scan_single", methods=["POST"])
+def scan_single():
+    ip_or_mac = request.form.get("ip_or_mac", "").strip()
+    port_data = load_open_ports()
+
+    # Basic validation for IP or MAC format
+    is_ip = re.match(r"\d{1,3}(\.\d{1,3}){3}", ip_or_mac)
+    is_mac = re.match(r"([0-9a-fA-F]{2}[:\-]){5}([0-9a-fA-F]{2})", ip_or_mac)
+
+    if is_ip:
+        ip = ip_or_mac
+    elif is_mac:
+        # Try to resolve MAC to IP from current scan
+        scan = scan_network_with_mac()
+        ip = next((k for k, v in scan.items() if v.get("mac", "").lower() == ip_or_mac.lower()), None)
+        if not ip:
+            return f"MAC {ip_or_mac} not found", 404
+    else:
+        return "Invalid IP or MAC address format", 400
+
+    # Scan selected ports
+    ports = [22, 80, 443, 445, 3389]
+    tcp = scan_tcp_ports(ip, ports)
+    udp = scan_udp_ports(ip, ports)
+    port_data[ip] = {"tcp": tcp, "udp": udp}
+    save_open_ports(port_data)
+
+    return redirect("/vulnerabilities")
+
+@app.route("/clear_ports", methods=["POST"])
+def clear_ports():
+    save_open_ports({})
+    return redirect("/vulnerabilities")
 
 
 def run():

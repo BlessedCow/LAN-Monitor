@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Vulnerability Report</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>Vulnerabilities by Device</h1>
+
+    <p>
+        Export:
+        <a href="/export_vulns/json">JSON</a> |
+        <a href="/export_vulns/csv">CSV</a>
+    </p>
+ 
+    <nav>
+        <a href="/">← Dashboard</a>
+        &nbsp;|&nbsp;
+        <a href="/scan_all_ports">Scan All Devices</a>
+        &nbsp;|&nbsp;
+        <form method="post" action="/clear_ports" style="display:inline;">
+            <button type="submit" style="color: red;">Clear Scan Results</button>
+        </form>
+    </nav>
+    
+    <!-- CVSS and CISA filters -->
+    <form method="get" style="margin-bottom: 1em; margin-top: 1em;">
+        <label>Min CVSS Score:
+            <input type="number" name="min_cvss" step="0.1" min="0" max="10" value="{{ request.args.get('min_cvss', '') }}">
+        </label>
+        <label style="margin-left: 1em;">
+            <input type="checkbox" name="cisa" value="true" {% if request.args.get('cisa') == 'true' %}checked{% endif %}>
+            Show only CISA-exploited
+        </label>
+        <button type="submit">Apply Filters</button>
+    </form>
+
+    <!-- IP or MAC-based single scan -->
+    <form method="post" action="/scan_single" style="margin-bottom: 2em;">
+        <label>Scan single device by IP or MAC:
+            <input type="text" name="ip_or_mac" placeholder="192.168.1.10 or AA:BB:CC:DD:EE:FF">
+        </label>
+        <button type="submit">Scan Device</button>
+    </form>
+
+    {% for ip, vulns in results.items() %}
+        <h3 style="margin-top: 2em;">
+            {{ ip }}
+            {% if labels[ip.lower()] %}
+                ({{ labels[ip.lower()] }})
+            {% endif %}
+        </h3>
+
+        {% if vulns %}
+            <ul>
+                {% for v in vulns %}
+                <li>
+                    <strong>Port {{ v.port }} ({{ v.service }})</strong><br>
+                    <strong>{{ v.cve_id }}</strong> — {{ v.description }}<br>
+                    <em>CVSS Score:</em> {{ v.cvss }} |
+                    <em>Published:</em> {{ v.published }}
+                    {% if v.cisa %}
+                        <span style="color: red; font-weight: bold;">[CISA Exploited]</span>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>No vulnerabilities found.</p>
+        {% endif %}
+    {% endfor %}
+</body>
+</html>

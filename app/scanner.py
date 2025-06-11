@@ -8,6 +8,7 @@ import platform
 import time
 import requests
 from typing import Optional
+import socket
 
 # Import and load the local OUI‐to‐vendor map (Wireshark “manuf” file fallback)
 from app.oui_lookup import load_manuf_file, lookup_vendor_offline
@@ -22,10 +23,10 @@ except ImportError:
 
 
 def select_active_iface() -> Optional[str]:
-    """
-    Return a non-loopback interface name for Scapy to send ARP on.
-    Skip any interface whose name contains “loopback” or “pseudo”.
-    """
+    
+    # Return a non-loopback interface name for Scapy to send ARP on.
+    # Skip any interface whose name contains “loopback” or “pseudo”.
+    
     if not SCAPY_AVAILABLE:
         return None
 
@@ -43,10 +44,10 @@ def select_active_iface() -> Optional[str]:
 
 
 def ping_host(ip: str, timeout: float = 0.3) -> tuple[str, Optional[float]]:
-    """
-    Send a single ICMP echo request to `ip`. Return (ip, latency_seconds) if replied,
-    otherwise (ip, None).
-    """
+
+    # Send a single ICMP echo request to `ip`. Return (ip, latency_seconds) if replied,
+    # otherwise (ip, None).
+    
     try:
         latency = ping3.ping(ip, timeout=timeout, size=32)
         return (ip, latency) if latency else (ip, None)
@@ -55,10 +56,10 @@ def ping_host(ip: str, timeout: float = 0.3) -> tuple[str, Optional[float]]:
 
 
 def raw_arp_scan(network_cidr: str = "192.168.1.0/24", timeout: float = 2.0) -> dict[str, str]:
-    """
-    Broadcast one ARP “who-has” over `network_cidr` using Scapy+Npcap.
-    Return { ip: mac } for each ARP reply. Must run as Administrator/root.
-    """
+    
+    # Broadcast one ARP “who-has” over `network_cidr` using Scapy+Npcap.
+    # Return { ip: mac } for each ARP reply. Must run as Administrator/root.
+    
     iface = select_active_iface()
     if not iface:
         return {}
@@ -80,9 +81,9 @@ def raw_arp_scan(network_cidr: str = "192.168.1.0/24", timeout: float = 2.0) -> 
 
 
 def os_arp_table() -> dict[str, str]:
-    """
-    Run “arp -a” (Windows) or “arp -n” (Linux/macOS) and parse { ip: mac }.
-    """
+    
+    # Run “arp -a” (Windows) or “arp -n” (Linux/macOS) and parse { ip: mac }.
+    
     system = platform.system().lower()
     cmd = ["arp", "-a"] if system.startswith("win") else ["arp", "-n"]
     try:
@@ -105,10 +106,10 @@ def os_arp_table() -> dict[str, str]:
 
 
 def lookup_oui_vendor(mac: str) -> Optional[str]:
-    """
-    1) Try the online API (mac2vendor.com).  
-    2) If that fails or returns no result, fall back to lookup_vendor_offline().
-    """
+    
+    # 1) Try the online API (mac2vendor.com).  
+    # 2) If that fails or returns no result, fall back to lookup_vendor_offline().
+    
     if not mac:
         return None
 
@@ -132,7 +133,28 @@ def lookup_oui_vendor(mac: str) -> Optional[str]:
     # Fallback to the local Wireshark manuf file
     return lookup_vendor_offline(mac)
 
+def scan_tcp_ports(ip: str, ports: list[int], timeout: float = 1.0) -> list[int]:
+    open_ports = []
+    for port in ports:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(timeout)
+            if s.connect_ex((ip, port)) == 0:
+                open_ports.append(port)
+    return open_ports
 
+def scan_udp_ports(ip: str, ports: list[int], timeout: float = 1.0) -> list[int]:
+    open_ports = []
+    for port in ports:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.settimeout(timeout)
+                s.sendto(b"", (ip, port))
+                s.recvfrom(1024)
+        except socket.timeout:
+            open_ports.append(port)
+        except Exception:
+            pass
+    return open_ports
 def scan_network_with_mac(
     base_ip: str = "192.168.1.",
     start: int = 1,
@@ -141,21 +163,21 @@ def scan_network_with_mac(
     max_workers: int = 100,
     arp_timeout: float = 2.0
 ) -> dict[str, dict[str, Optional[object]]]:
-    """
-    1) Ping every IP base_ip{start}..base_ip{end} in parallel → latency_map { ip: latency }.
-    2) Attempt raw ARP scan → ip_to_mac. If too few MACs, fallback to OS ARP table.
-    3) For each ping-responsive IP:
-         mac    = ip_to_mac.get(ip) or None
-         vendor = lookup_oui_vendor(mac) if mac else None
-         latency = round(latency_sec * 1000, 2)
-       Return a dict:
-       {
-         "192.168.1.5":  { "mac": "aa:bb:cc:dd:ee:ff" or None,
-                           "vendor": "Vendor Name" or None,
-                           "latency": 12.34 },
-         ...
-       }
-    """
+    
+    # 1) Ping every IP base_ip{start}..base_ip{end} in parallel → latency_map { ip: latency }.
+    # 2) Attempt raw ARP scan → ip_to_mac. If too few MACs, fallback to OS ARP table.
+    # 3) For each ping-responsive IP:
+    #      mac    = ip_to_mac.get(ip) or None
+    #      vendor = lookup_oui_vendor(mac) if mac else None
+    #      latency = round(latency_sec * 1000, 2)
+    #    Return a dict:
+    #    {
+    #      "192.168.1.5":  { "mac": "aa:bb:cc:dd:ee:ff" or None,
+    #                        "vendor": "Vendor Name" or None,
+    #                        "latency": 12.34 },
+    #      ...
+    #    }
+    
     # --- Step 1: Ping sweep ---
     latency_map: dict[str, float] = {}
     with ThreadPoolExecutor(max_workers=max_workers) as executor:

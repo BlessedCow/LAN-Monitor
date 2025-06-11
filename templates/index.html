@@ -34,6 +34,11 @@
 <body>
     <h1>LAN Monitor Dashboard</h1>
 
+    <nav style="margin-bottom: 1em;">
+        <a href="/">Dashboard</a> |
+        <a href="/vulnerabilities">Vulnerabilities</a>
+    </nav>
+
     <p class="ssid-info">
         Connected via: <strong>{{ ssid }}</strong>
     </p>
@@ -45,6 +50,7 @@
             <th>Vendor</th>
             <th>Latency (ms)</th>
             <th>Label</th>
+            <th>Port Scan</th>
         </tr>
         {% for ip, info in devices.items() %}
             {% set latency = info.latency %}
@@ -76,6 +82,13 @@
                     {% else %}
                         —
                     {% endif %}
+                </td>
+                <td>
+                    <form method="post" action="/scan_ports" style="display:inline;">
+                        <input type="hidden" name="ip" value="{{ ip }}">
+                        <input type="text" name="ports" placeholder="22,80,443" size="10">
+                        <button type="submit">Scan</button>
+                    </form>
                 </td>
             </tr>
         {% endfor %}
