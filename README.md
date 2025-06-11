@@ -79,7 +79,7 @@
 
 ## 🗂 File Structure
 
-LAN-Monitor/
+```LAN-Monitor/
 ├── main.py               # Flask entrypoint
 ├── requirements.txt      # Python dependencies
 ├── README.md             # Project description
@@ -98,7 +98,7 @@ LAN-Monitor/
 │
 └── static/
     └── style.css         # Dashboard styles
-
+```
 
 
 ---
