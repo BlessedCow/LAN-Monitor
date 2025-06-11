@@ -75,30 +75,34 @@
    python main.py
    Open your browser to: http://localhost:5000
    
+---
+
 ## 🗂 File Structure
+
 LAN-Monitor/
-├── main.py
-├── requirements.txt
-├── README.md
-├── labels.json                 # Optional: custom labels
-├── open_ports.json             # Saved open ports per device
+├── main.py               # Flask entrypoint
+├── requirements.txt      # Python dependencies
+├── README.md             # Project description
+├── .gitignore            # Ignore cache, envs, etc.
 │
 ├── app/
-│   ├── dashboard.py            # Flask routes
-│   ├── scanner.py              # Network & port scanning
-│   ├── oui_lookup.py           # OUI → Vendor resolution
-│   ├── utils.py                # JSON save/load helpers
-│   ├── vuln_lookup.py          # NVD + CISA CVE matching
+│   ├── __init__.py
+│   ├── dashboard.py      # Flask route logic
+│   ├── scanner.py        # Ping sweep, ARP, OUI lookup
+│   ├── oui_lookup.py     # Offline OUI mapping
 │   └── oui/
-│       └── manuf               # Local Wireshark OUI file
+│       └── manuf         # Wireshark manuf file
 │
 ├── templates/
-│   ├── index.html              # Main dashboard
-│   ├── vulnerabilities.html    # CVE report page
-│   └── port_results.html       # On-demand scan results
+│   └── index.html        # Jinja2 dashboard template
 │
 └── static/
-    └── style.css               # Styling
+    └── style.css         # Dashboard styles
+
+
+
+---
+
 ## 🛠 Customization
 - **Scan range:** Edit base_ip, start, and end in scanner.py
 - **Port lists:** Customize in /scan_ports or /scan_all_ports
