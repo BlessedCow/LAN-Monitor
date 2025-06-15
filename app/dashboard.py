@@ -1,6 +1,6 @@
 # app/dashboard.py
 
-from flask import Flask, render_template, request, redirect
+from flask import Flask, render_template, request, redirect, send_file, jsonify, Response
 from app.scanner import scan_network_with_mac
 from app.scanner import scan_tcp_ports, scan_udp_ports
 from app.utils import load_labels, save_labels
@@ -9,6 +9,10 @@ from app.vuln_lookup import PORT_SERVICE_MAP, query_nvd, load_cisa_kev
 import platform
 import subprocess
 import re
+import json
+import os
+import io
+import csv
 from typing import Optional
 
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
@@ -226,6 +230,94 @@ def clear_ports():
     save_open_ports({})
     return redirect("/vulnerabilities")
 
+@app.route('/export/json')
+def export_json():
+    try:
+        port_data = load_open_ports()
+        scan_data = scan_network_with_mac()
+        labels = load_labels()
+
+        export_data = {}
+
+        for ip, ports in port_data.items():
+            mac = scan_data.get(ip, {}).get("mac", "unknown").lower()
+            label = labels.get(mac, "")
+
+            export_data[ip] = {
+                "mac": mac,
+                "label": label,
+                "ports": ports
+            }
+
+        return Response(
+            json.dumps(export_data, indent=2),
+            mimetype='application/json',
+            headers={"Content-Disposition": "attachment;filename=vulnerability_report.json"}
+        )
+
+    except Exception as e:
+        return f"Error exporting JSON: {str(e)}", 500
+
+@app.route('/export/csv')
+def export_csv():
+    try:
+        port_data = load_open_ports()
+        scan_data = scan_network_with_mac()
+        labels = load_labels()
+        cisa_kev = load_cisa_kev()
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow([
+            "IP Address", "MAC Address", "Label", "Port", "Service",
+            "CVE ID", "CVSS Score", "Published", "Summary", "CISA Exploited"
+        ])
+
+        for ip, ports in port_data.items():
+            mac = scan_data.get(ip, {}).get("mac", "unknown").lower()
+            label = labels.get(mac, "")
+            for port in ports.get("tcp", []) + ports.get("udp", []):
+                service = PORT_SERVICE_MAP.get(port, f"port_{port}")
+                cves = query_nvd(service, max_results=5)
+
+                if cves:
+                    for cve in cves:
+                        is_exploited = cve["cve_id"].upper() in cisa_kev
+                        writer.writerow([
+                            ip,
+                            mac,
+                            label,
+                            port,
+                            service,
+                            cve.get("cve_id", ""),
+                            cve.get("cvss", ""),
+                            cve.get("published", ""),
+                            cve.get("description", "").replace('\n', ' ').strip(),
+                            "Yes" if is_exploited else "No"
+                        ])
+                else:
+                    writer.writerow([
+                        ip,
+                        mac,
+                        label,
+                        port,
+                        service,
+                        "",
+                        "",
+                        "",
+                        "No known CVEs",
+                        ""
+                    ])
+
+        output.seek(0)
+        return Response(
+            output,
+            mimetype='text/csv',
+            headers={"Content-Disposition": "attachment;filename=vulnerability_report.csv"}
+        )
+
+    except Exception as e:
+        return f"Error exporting CSV: {str(e)}", 500
 
 def run():
     app.run(host="0.0.0.0", port=5000)
