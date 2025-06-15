@@ -1,108 +1,85 @@
 # LAN Monitor
 
-**LAN Monitor** is a lightweight Python-based web application that provides a real-time dashboard of devices on your local network. It combines ICMP “ping” sweeps, ARP lookups, and OUI-based vendor identification to show which hosts are online, their MAC addresses, and vendor info—all accessible via a Flask-powered web interface.
-
----
+**LAN Monitor** is a lightweight Python-based web app that scans your local network, identifies connected devices, and checks for common vulnerabilities. It provides a real-time dashboard with latency metrics, MAC vendor lookup, and per-device port/CVE analysis — all accessible via a clean Flask web interface.
 
 ## 🔑 Key Features
 
 ### 📡 Device Discovery
-- **Ping Sweep:** Concurrently pings every IP in a specified range (e.g. `192.168.1.1–254`) to find responsive hosts.  
+- **Ping Sweep:** Concurrently pings a specified IP range (e.g. 192.168.1.1–254) to identify responsive hosts.
 - **ARP Lookup:** Retrieves MAC addresses using:
-  - Raw Scapy/Npcap ARP requests (on Windows)
-  - OS ARP cache (via `arp -a` on Windows / `arp -n` on Linux/macOS)
-- **Offline Fallback:** Uses system ARP table if raw ARP yields few results.
+  - Raw ARP via Scapy (if Npcap is available)
+  - OS ARP cache as fallback (arp -a / arp -n)
+- **SSID Detection:** Shows current SSID or Ethernet fallback.
+  
+### 🏷 Vendor Identification & Labeling
+- **Vendor Info:** Matches OUI prefix from MAC to identify vendor.
+- **Offline OUI Support:** Includes Wireshark manuf fallback.
+- **Custom Labels:** Assign and persist labels per device (by MAC).
+  
+### 📊 Real-Time Dashboard
+- **Built with Flask + Jinja2**
+- **Sortable device table with:** IP, MAC, Vendor, Latency, Label
+- **Color-coded latency:**
+  - 0–50ms → 🟩 Green (#adebb3)
+  - 51–100ms → 🟨 Yellow (#e6e8a1)
+  - 101–150ms → 🟧 Orange (#d9a65a)
+  - 150ms → 🟥 Red (#ce3c3c)
+  
+### 🔍 Vulnerability Scanning
+- Identify open ports and match them against known vulnerabilities from NVD and CISA.
+- Scan all devices or target one by IP or MAC.
 
-### 🏷 Vendor Identification (OUI Lookup)
-- **Online API:** Queries [mac2vendor.com](https://mac2vendor.com) using the OUI prefix of each MAC address.
-- **Offline Fallback:** Uses a bundled Wireshark `manuf` file to match OUIs when the API fails or is unavailable.
-
-### 📊 Sortable, Color-Coded Dashboard
-- **Tech Stack:** Flask + Jinja2 for real-time rendering.
-- **Latency Coloring:**
-  - `0–50 ms`: 🟩 Green (`#adebb3`)
-  - `51–100 ms`: 🟨 Yellow (`#e6e8a1`)
-  - `101–150 ms`: 🟧 Orange (`#d9a65a`)
-  - `>150 ms`: 🟥 Red (`#ce3c3c`)
-- **Connection Info:** Shows SSID for Wi-Fi or "Ethernet"/"Unknown" for wired connections.
-
-### ⚙️ Easy Deployment
-- **Python 3.9+** compatible
-- Uses:
-  - `Flask`, `ping3`, `scapy`, `requests`, `psutil`
-  - Native OS commands for ARP/SSID detection
-
----
-
-## ⚙️ How It Works
-
-### 1. Ping Sweep
-Uses `ping3` and `ThreadPoolExecutor` to send ICMP echo requests to IPs like `192.168.1.1–254`. Hosts that respond are recorded with latency.
-
-### 2. ARP Scan
-- **Primary:** Uses Scapy to broadcast ARP who-has requests to the subnet.
-- **Fallback:** Parses system ARP cache with `arp -a` or `arp -n` if MACs are missing.
-
-### 3. OUI Vendor Lookup
-- Tries [mac2vendor.com](https://mac2vendor.com) first.
-- Falls back to Wireshark `manuf` file for offline support.
-
-### 4. Dashboard Rendering
-- Route `/` calls `scan_network_with_mac()` and passes host info to a Jinja2 template.
-- Columns shown:
-  - IP Address
-  - MAC Address
-  - Vendor
-  - Latency (with background color)
-- Connection type shown above the table.
-
----
+### 🎯 Open Port Detection
+- Scan TCP/UDP ports on any device
+- Enter ports manually or use common defaults
+  
+### 📋 CVE Integration
+- **Looks up open ports via:**
+  - NVD (National Vulnerability Database)
+  - CISA KEV (Known Exploited Vulnerabilities)
+- **Flags:**
+  - CVE ID, Description, CVSS score, Publish date
+  - Highlights CISA-exploited issues
+  
+### 📌 Filtering & Export
+- Filter by CVSS score or CISA flag
+- Export all scan results to JSON or CSV
+- Option to scan:
+  - All devices
+  - A single device (by IP or MAC)
+- Option to flush scan history via UI
 
 ## 🚀 Getting Started
 
-### 1. Clone the Repo
+### 1. Clone the Repo:
 
-```bash
-git clone https://github.com/BlessedCow/LAN-Monitor.git
-cd LAN-Monitor
-```
+   git clone https://github.com/BlessedCow/LAN-Monitor.git
+   cd LAN-Monitor
 
-### 2. Create Virtual Environment
+### 2. Set Up a Virtual Environment:
+   python -m venv .venv
+   # Windows:
+   .venv\Scripts\activate
+   # macOS/Linux:
+   source .venv/bin/activate
 
-```bash
-python -m venv .venv
-# On Windows:
-.venv\Scripts\activate
-# On macOS/Linux:
-source .venv/bin/activate
-```
+### 3. Install Dependencies:
+   pip install -r requirements.txt
 
-### 3. Install Dependencies
+### 4. (Windows Only) Install Npcap:
+   - Download from https://nmap.org/npcap
+   - Enable WinPcap API-compatible mode
+   - Run terminal as Administrator
 
-```bash
-pip install -r requirements.txt
-```
-
-### 4. Install Npcap (Windows only)
-Download and install [Npcap](https://nmap.org/npcap/)  
-✅ Enable **WinPcap API-compatible mode**  
-⚠️ Run your terminal (CMD or PowerShell) **as Administrator**
-
-### 5. Run the App
-
-```bash
-python main.py
-```
-
-Open your browser to:  
-📍 [http://localhost:5000](http://localhost:5000)
-
+### 5. Launch the App:
+   python main.py
+   Open your browser to: http://localhost:5000
+   
 ---
 
 ## 🗂 File Structure
 
-```
-LAN-Monitor/
+```LAN-Monitor/
 ├── main.py               # Flask entrypoint
 ├── requirements.txt      # Python dependencies
 ├── README.md             # Project description
@@ -123,21 +100,17 @@ LAN-Monitor/
     └── style.css         # Dashboard styles
 ```
 
+
 ---
 
 ## 🛠 Customization
-
-- **IP Range:** Adjust `base_ip`, `start`, and `end` in `scan_network_with_mac()`.
-- **Threading & Timeouts:** Tune `max_workers`, `ping_timeout`, and `arp_timeout` for performance.
-- **Latency Colors:** Modify the thresholds in `templates/index.html`.
-- **Update OUI Database:**
-
-```bash
-curl -L https://gitlab.com/wireshark/wireshark/-/raw/<commit-hash>/manuf -o app/oui/manuf
-```
-
----
-
-## 📄 License
-
+- **Scan range:** Edit base_ip, start, and end in scanner.py
+- **Port lists:** Customize in /scan_ports or /scan_all_ports
+- **Latency colors:** Change thresholds in templates/index.html
+- **Update OUI file:**
+  curl -L https://gitlab.com/wireshark/wireshark/-/raw/master/manuf -o app/oui/manuf
+  *or*
+  Manually add entries to oui\manuf file
+  
+📄 License
 This project is licensed under the [MIT License](LICENSE).
