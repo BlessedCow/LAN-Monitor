@@ -1,0 +1,45 @@
+<!-- templates/fingerprints.html -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Device Fingerprints</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <h1>Device Fingerprints</h1>
+  <a href="/">← Back to Dashboard</a>
+
+  <table>
+    <thead>
+      <tr>
+        <th>IP</th>
+        <th>MAC</th>
+        <th>Label</th>
+        <th>Hostname</th>
+        <th>Vendor</th>
+        <th>OS Guess</th>
+        <th>SNMP</th>
+        <th>SSDP</th>
+        <th>NetBIOS</th>
+      </tr>
+    </thead>
+    <tbody>
+        {% for ip, info in fingerprints.items() %}
+        <tr>
+          <td>{{ ip }}</td>
+          <td>{{ info.mac or '' }}</td>
+          <td>{{ labels.get(info.mac.lower(), '') if info.mac else '' }}</td>
+          <td>{{ info.hostname or '' }}</td>
+          <td>{{ info.vendor or '' }}</td>
+          <td>{{ info.os_guess or '' }}</td>
+          <td>{{ info.snmp or '' }}</td>
+          <td>{{ info.ssdp or '' }}</td>
+          <td>{{ info.netbios or '' }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

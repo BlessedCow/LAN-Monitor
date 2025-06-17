@@ -6,6 +6,7 @@ from app.scanner import scan_tcp_ports, scan_udp_ports
 from app.utils import load_labels, save_labels
 from app.utils import load_open_ports, save_open_ports
 from app.vuln_lookup import PORT_SERVICE_MAP, query_nvd, load_cisa_kev
+from app.fingerprint import fingerprint_all
 import platform
 import subprocess
 import re
@@ -92,6 +93,7 @@ def get_current_ssid() -> str:
         return "Unknown"
 
 
+
 @app.route("/")
 def home():
     devices_info = scan_network_with_mac(
@@ -102,7 +104,8 @@ def home():
         max_workers=100,
         arp_timeout=2.0,
     )
-
+    # fingerprints = fingerprint_all(devices)
+    
     sorted_list = sorted(devices_info.items(), key=lambda item: item[1]["latency"])
     sorted_devices = {ip: info for ip, info in sorted_list}
 
@@ -144,6 +147,18 @@ def scan_ports():
     save_open_ports({ip: {"tcp": open_tcp, "udp": open_udp}})
 
     return render_template("port_results.html", ip=ip, tcp=open_tcp, udp=open_udp, cve_map={})
+
+@app.route("/fingerprints")
+def fingerprints():
+    devices = scan_network_with_mac()
+    fingerprinted = fingerprint_all(devices)
+    labels = load_labels()
+
+    return render_template(
+        "fingerprints.html",
+        fingerprints=fingerprinted,
+        labels=labels
+    )
 
 @app.route("/vulnerabilities")
 def vulnerabilities():
