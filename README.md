@@ -75,6 +75,7 @@
 
 ### 5. Launch the App:
    ``` python main.py ```
+   
    Open your browser to: http://localhost:5000
    
 ---
