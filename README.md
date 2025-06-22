@@ -57,14 +57,14 @@
    cd LAN-Monitor
 
 ### 2. Set Up a Virtual Environment:
-   python -m venv .venv
+  ``` python -m venv .venv ```
    # Windows:
-   .venv\Scripts\activate
+ ``` .venv\Scripts\activate ```
    # macOS/Linux:
-   source .venv/bin/activate
+ ``` source .venv/bin/activate ```
 
 ### 3. Install Dependencies:
-   pip install -r requirements.txt
+ ``` pip install -r requirements.txt ```
 
 ### 4. (Windows Only) Install Npcap:
    - Download from https://nmap.org/npcap
@@ -72,7 +72,7 @@
    - Run terminal as Administrator
 
 ### 5. Launch the App:
-   python main.py
+   ``` python main.py ```
    Open your browser to: http://localhost:5000
    
 ---
