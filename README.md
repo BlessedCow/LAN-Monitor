@@ -53,8 +53,9 @@
 
 ### 1. Clone the Repo:
 
-   git clone https://github.com/BlessedCow/LAN-Monitor.git
-   cd LAN-Monitor
+   ```git clone https://github.com/BlessedCow/LAN-Monitor.git```
+   ```cd LAN-Monitor```
+   
 
 ### 2. Set Up a Virtual Environment:
   ``` python -m venv .venv ```
