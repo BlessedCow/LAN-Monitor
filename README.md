@@ -87,17 +87,26 @@
 ├── requirements.txt      # Python dependencies
 ├── README.md             # Project description
 ├── .gitignore            # Ignore cache, envs, etc.
+├── open_ports.json
 │
 ├── app/
 │   ├── __init__.py
 │   ├── dashboard.py      # Flask route logic
 │   ├── scanner.py        # Ping sweep, ARP, OUI lookup
+│   ├── fingerprint.py
+│   ├── utils.py
+│   ├── labels.json       
+│   ├── vuln_lookup.py    # CVE and NVD lookup 
 │   ├── oui_lookup.py     # Offline OUI mapping
 │   └── oui/
 │       └── manuf         # Wireshark manuf file
 │
 ├── templates/
+│   ├── fingerprints.html
+│   ├── port_results.html
+│   ├── vulnerabilities.html
 │   └── index.html        # Jinja2 dashboard template
+│
 │
 └── static/
     └── style.css         # Dashboard styles
