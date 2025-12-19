@@ -3,3 +3,5 @@ ping3>=4.0
 scapy==2.4.5
 requests>=2.25
 psutil>=5.8
+pysnmp
+zeroconf

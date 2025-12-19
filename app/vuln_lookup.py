@@ -1,74 +1,71 @@
-import requests
-import csv
+import sqlite3
+from pathlib import Path
 
-# In-memory cache for NVD service lookups
-_nvd_cache = {}
+# Define the path to the local database
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+DB_PATH = DATA_DIR / "vulns.db"
 
-# Common port-to-service name mapping
+# Map of common ports to service names
 PORT_SERVICE_MAP = {
-    21: "ftp", 22: "ssh", 23: "telnet", 25: "smtp", 53: "dns",
-    80: "http", 110: "pop3", 139: "netbios", 143: "imap",
-    443: "https", 445: "smb", 3389: "rdp", 5900: "vnc"
+    21: "ftp", 22: "ssh", 23: "telnet", 25: "smtp", 53: "dns", 80: "http", 110: "pop3", 123: "ntp",
+    135: "rpc", 139: "smb", 143: "imap", 161: "snmp", 389: "ldap", 443: "https", 445: "smb",
+    465: "smtps", 514: "syslog", 587: "smtp", 631: "ipp", 993: "imaps", 995: "pop3s",
+    1433: "mssql", 1521: "oracle", 1723: "pptp", 3306: "mysql", 3389: "rdp", 5432: "postgres",
+    5900: "vnc", 6379: "redis", 8080: "http-proxy"
 }
 
-def query_nvd(service, max_results=3):
-    
-    # Query NVD for CVEs matching the service keyword.
-    # Returns cached result if available.
-    
-    if service in _nvd_cache:
-        return _nvd_cache[service]
-
-    url = "https://services.nvd.nist.gov/rest/json/cves/2.0"
-    params = {"keywordSearch": service, "resultsPerPage": max_results}
-    try:
-        r = requests.get(url, params=params, timeout=5)
-        r.raise_for_status()
-        data = r.json()
-
-        results = []
-        for cve in data.get("vulnerabilities", []):
-            item = cve.get("cve", {})
-            cve_id = item.get("id", "N/A")
-            description = item.get("descriptions", [{}])[0].get("value", "No description available.")
-            published = item.get("published", "N/A")
-            cvss = "N/A"
-
-            # Check for CVSS score across v3.1, v3.0, v2
-            metrics = item.get("metrics", {})
-            for key in ("cvssMetricV31", "cvssMetricV30", "cvssMetricV2"):
-                entries = metrics.get(key, [])
-                if entries:
-                    data = entries[0].get("cvssData") or entries[0]
-                    cvss = data.get("baseScore") or data.get("score") or "N/A"
-                    break
-
-            results.append({
-                "cve_id": cve_id,
-                "description": description,
-                "cvss": cvss,
-                "published": published
-            })
-
-        _nvd_cache[service] = results
-        return results
-
-    except Exception as e:
-        return [{
-            "cve_id": "Error",
-            "description": str(e),
-            "cvss": "N/A",
-            "published": "N/A"
-        }]
-
 def load_cisa_kev():
-    # Load CISA Exploited Vulnerabilities list.
-    url = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.csv"
-    try:
-        r = requests.get(url, timeout=5)
-        r.raise_for_status()
-        decoded = r.content.decode("utf-8").splitlines()
-        reader = csv.DictReader(decoded)
-        return {row["cveID"].strip().upper(): row for row in reader}
-    except Exception:
-        return {}
+    """Return a set of CVE IDs that are known to be exploited (from local DB)."""
+    kev_set = set()
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        for row in c.execute("SELECT cve_id FROM cves WHERE is_exploited = 1"):
+            kev_set.add(row[0].upper())
+    return kev_set
+
+def query_vulns(service=None, cpes=None, min_score=0, cisa_only=False, limit=100):
+    sql = """
+        SELECT DISTINCT c.cve_id, c.description, c.score, c.published, c.is_exploited
+        FROM cves c
+        LEFT JOIN cve_cpes cp ON c.cve_id = cp.cve_id
+        WHERE c.score >= ?
+    """
+    params = [min_score]
+
+    if service:
+        sql += " AND c.service = ?"
+        params.append(service)
+
+    if cpes:
+        sql += " AND cp.cpe IN ({})".format(",".join("?" * len(cpes)))
+        params.extend(cpes)
+
+    if cisa_only:
+        sql += " AND c.is_exploited = 1"
+
+    sql += " ORDER BY c.score DESC LIMIT ?"
+    params.append(limit)
+
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        return [dict(r) for r in conn.execute(sql, params)]
+
+def query_local_vulns(service, min_score=0, cisa_only=False, max_results=10):
+    """Query CVEs from the local database based on service and filters."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    sql = "SELECT * FROM cves WHERE service = ? AND score >= ?"
+    params = [service, min_score]
+
+    if cisa_only:
+        sql += " AND is_exploited = 1"
+
+    sql += " ORDER BY score DESC LIMIT ?"
+    params.append(max_results)
+
+    rows = cursor.execute(sql, params).fetchall()
+    conn.close()
+
+    return [dict(r) for r in rows]

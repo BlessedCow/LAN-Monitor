@@ -3,9 +3,10 @@
 from flask import Flask, render_template, request, redirect, send_file, jsonify, Response
 from app.scanner import scan_network_with_mac
 from app.scanner import scan_tcp_ports, scan_udp_ports
+from app.scanner import get_own_ip
 from app.utils import load_labels, save_labels
 from app.utils import load_open_ports, save_open_ports
-from app.vuln_lookup import PORT_SERVICE_MAP, query_nvd, load_cisa_kev
+from app.vuln_lookup import PORT_SERVICE_MAP, query_local_vulns, load_cisa_kev
 from app.fingerprint import fingerprint_all
 import platform
 import subprocess
@@ -15,6 +16,7 @@ import os
 import io
 import csv
 from typing import Optional
+
 
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
 
@@ -95,7 +97,9 @@ def get_current_ssid() -> str:
 
 
 @app.route("/")
-def home():
+def index():
+    own_ip = get_own_ip()
+
     devices_info = scan_network_with_mac(
         base_ip="192.168.1.",
         start=1,
@@ -104,16 +108,23 @@ def home():
         max_workers=100,
         arp_timeout=2.0,
     )
-    # fingerprints = fingerprint_all(devices)
-    
-    sorted_list = sorted(devices_info.items(), key=lambda item: item[1]["latency"])
-    sorted_devices = {ip: info for ip, info in sorted_list}
+
+    # sort by latency and rename to the variable your template expects
+    sorted_list = sorted(devices_info.items(), key=lambda item: item[1].get("latency", 999999))
+    devices = {ip: info for ip, info in sorted_list}
 
     ssid = get_current_ssid()
     labels = load_labels()
-    return render_template("index.html", devices=sorted_devices, ssid=ssid, labels=labels)
+    warning = not bool(devices)
 
-
+    return render_template(
+        "index.html",
+        devices=devices,
+        ssid=ssid,
+        labels=labels,
+        warning=warning,
+        own_ip=own_ip
+    )
 @app.route("/set_label", methods=["POST"])
 def set_label():
     mac = request.form.get("mac", "").lower()
@@ -151,51 +162,120 @@ def scan_ports():
 @app.route("/fingerprints")
 def fingerprints():
     devices = scan_network_with_mac()
-    fingerprinted = fingerprint_all(devices)
-    labels = load_labels()
+    raw = fingerprint_all(devices)
 
-    return render_template(
-        "fingerprints.html",
-        fingerprints=fingerprinted,
-        labels=labels
-    )
+    def adapt(fp: dict) -> dict:
+        http80 = fp.get("http80") or {}
+        https443 = fp.get("https443") or {}
+
+        return {
+            "mac": fp.get("mac"),
+            "vendor": fp.get("vendor"),
+            "hostname": fp.get("rdns") or "",
+            "os_guess": fp.get("nmap_os") or fp.get("guess") or "",
+            "snmp": fp.get("snmp") or "",
+            "ssdp": (fp.get("ssdp") or {}).get("device_xml")
+                    or (fp.get("ssdp") or {}).get("headers") or "",
+            "netbios": "",  # not collected by the enhanced module
+            "service_banners": {
+                "ftp": "",
+                "smtp": "",
+                "pop3": "",
+                "imap": "",
+                "telnet": "",
+                "http": (" ".join(filter(None, [
+                    (http80.get("server") or "").strip(),
+                    (http80.get("title") or "").strip()
+                ]))).strip(),
+                "https": (" ".join(filter(None, [
+                    (https443.get("server") or "").strip(),
+                    (https443.get("title") or https443.get("tls_common_name") or "").strip()
+                ]))).strip(),
+                "ssh": fp.get("ssh") or "",
+            }
+        }
+
+    fingerprinted = {ip: adapt(info) for ip, info in raw.items()}
+    labels = load_labels()
+    return render_template("fingerprints.html", fingerprints=fingerprinted, labels=labels)
 
 @app.route("/vulnerabilities")
 def vulnerabilities():
-    min_cvss = float(request.args.get("min_cvss", 0))
-    cisa_only = request.args.get("cisa", "false").lower() == "true"
+    own_ip = get_own_ip()
 
-    port_data = load_open_ports()
-    cisa_kev = load_cisa_kev()
-    labels = load_labels()
-    cve_results = {}
+    # Safe min_cvss parsing (handles "" and junk)
+    raw_min = (request.args.get("min_cvss") or "").strip()
+    try:
+        min_cvss = float(raw_min) if raw_min != "" else 0.0
+    except ValueError:
+        min_cvss = 0.0
+
+    cisa_only = request.args.get("cisa", "false").lower() == "true"
+    mode = request.args.get("mode", "severity").lower()  # severity | recent | full
+    sort_desc = request.args.get("sort") == "true"
+    summary_only = request.args.get("summary") == "true"
+
+    max_results = 200  # pull plenty, then sort/trim ourselves
+
+    port_data = load_open_ports() or {}
+    labels = load_labels() or {}
+    results = {}
+
+    def safe_float(x):
+        try:
+            return float(x)
+        except Exception:
+            return 0.0
+
+    def safe_date_key(s):
+        # expects "YYYY-MM-DD" or ""
+        return (s or "")
 
     for ip, ports in port_data.items():
-        cve_results[ip] = []
-        for port in ports.get("tcp", []) + ports.get("udp", []):
+        results[ip] = []
+
+        for port in (ports.get("tcp", []) + ports.get("udp", [])):
             service = PORT_SERVICE_MAP.get(port)
             if not service:
                 continue
-            nvd_cves = query_nvd(service, max_results=5)
-            for cve in nvd_cves:
-                try:
-                    cvss = float(cve.get("cvss", 0))
-                except:
-                    cvss = 0.0
-                is_exploited = cve["cve_id"].upper() in cisa_kev
-                if (cvss >= min_cvss) and (not cisa_only or is_exploited):
-                    cve_results[ip].append({
-                        "port": port,
-                        "service": service,
-                        "cve_id": cve["cve_id"],
-                        "description": cve["description"],
-                        "cvss": cve.get("cvss", "N/A"),
-                        "published": cve.get("published", "N/A"),
-                        "cisa": is_exploited
-                    })
 
-    return render_template("vulnerabilities.html", results=cve_results, labels=labels)
+            cves = query_local_vulns(
+                service,
+                min_score=min_cvss,
+                cisa_only=cisa_only,
+                max_results=max_results
+            )
 
+            for cve in cves:
+                results[ip].append({
+                    "port": port,
+                    "service": service,
+                    "cve_id": cve.get("id") or cve.get("cve_id"),
+                    "description": cve.get("desc") or cve.get("description"),
+                    "cvss": safe_float(cve.get("score") or cve.get("cvss") or 0),
+                    "published": cve.get("published") or "",
+                    "cisa": bool(cve.get("cisa") or cve.get("is_exploited") or 0),
+                })
+
+        # Sort + trim per device based on mode
+        if mode == "recent":
+            results[ip].sort(key=lambda x: safe_date_key(x.get("published", "")), reverse=True)
+            results[ip] = results[ip][:10]
+        elif mode == "severity":
+            results[ip].sort(key=lambda x: x.get("cvss", 0.0), reverse=True)
+            results[ip] = results[ip][:10]
+        elif mode == "full":
+            if sort_desc:
+                results[ip].sort(key=lambda x: x.get("cvss", 0.0), reverse=True)
+
+    return render_template(
+        "vulnerabilities.html",
+        results=results,
+        labels=labels,
+        sort_desc=sort_desc,
+        summary_only=summary_only,
+        own_ip=own_ip
+    )
 @app.route("/scan_all_ports")
 def scan_all_ports():
     devices = scan_network_with_mac()
@@ -293,7 +373,7 @@ def export_csv():
             label = labels.get(mac, "")
             for port in ports.get("tcp", []) + ports.get("udp", []):
                 service = PORT_SERVICE_MAP.get(port, f"port_{port}")
-                cves = query_nvd(service, max_results=5)
+                cves = query_local_vulns(service, max_score=10, max_results=5)
 
                 if cves:
                     for cve in cves:

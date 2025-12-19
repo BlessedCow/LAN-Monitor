@@ -6,13 +6,21 @@
 </head>
 <body>
     <h1>Vulnerabilities by Device</h1>
+<p style="margin-top: -10px; font-style: italic; color: gray;">
+    Current mode: 
+    {% if request.args.get('mode') == 'full' %}
+        Full Report (all matching vulnerabilities shown)
+    {% else %}
+        Quick Report (top 10 highest CVSS per service)
+    {% endif %}
+</p>
 
     <p>
         Export:
         <a href="/export_vulns/json">JSON</a> |
         <a href="/export_vulns/csv">CSV</a>
     </p>
- 
+
     <nav>
         <a href="/">← Dashboard</a>
         &nbsp;|&nbsp;
@@ -22,18 +30,42 @@
             <button type="submit" style="color: red;">Clear Scan Results</button>
         </form>
     </nav>
-    
-    <!-- CVSS and CISA filters -->
-    <form method="get" style="margin-bottom: 1em; margin-top: 1em;">
-        <label>Min CVSS Score:
-            <input type="number" name="min_cvss" step="0.1" min="0" max="10" value="{{ request.args.get('min_cvss', '') }}">
-        </label>
+
+<!-- Filter Toggles -->
+<form method="get" style="margin-bottom: 1em; margin-top: 1em;">
+    <label>Min CVSS Score:
+        <input type="number" name="min_cvss" step="0.1" min="0" max="10" value="{{ request.args.get('min_cvss', '0') }}">
+    </label>
+    <label style="margin-left: 1em;">
+        <input type="checkbox" name="cisa" value="true" {% if request.args.get('cisa') == 'true' %}checked{% endif %}>
+        Show only CISA-exploited
+    </label>
+    <label style="margin-left: 1em;">
+        <input type="checkbox" name="sort" value="true" {% if sort_desc %}checked{% endif %}>
+        Sort by CVSS (High → Low)
+    </label>
+    <label style="margin-left: 1em;">
+        <input type="checkbox" name="summary" value="true" {% if summary_only %}checked{% endif %}>
+        Show Summary Only
+    </label>
+    <label style="margin-left: 1em;">
+        Mode:
         <label style="margin-left: 1em;">
-            <input type="checkbox" name="cisa" value="true" {% if request.args.get('cisa') == 'true' %}checked{% endif %}>
-            Show only CISA-exploited
-        </label>
-        <button type="submit">Apply Filters</button>
-    </form>
+            Mode:
+            <select name="mode">
+                <option value="severity" {% if request.args.get('mode','severity') == 'severity' %}selected{% endif %}>
+                    Top 10 Severity
+                </option>
+                <option value="recent" {% if request.args.get('mode') == 'recent' %}selected{% endif %}>
+                    Top 10 Recent
+                </option>
+                <option value="full" {% if request.args.get('mode') == 'full' %}selected{% endif %}>
+                    Full Report
+                </option>
+            </select>
+          </label>
+    <button type="submit">Apply Filters</button>
+</form>
 
     <!-- IP or MAC-based single scan -->
     <form method="post" action="/scan_single" style="margin-bottom: 2em;">
@@ -44,30 +76,50 @@
     </form>
 
     {% for ip, vulns in results.items() %}
-        <h3 style="margin-top: 2em;">
-            {{ ip }}
-            {% if labels[ip.lower()] %}
-                ({{ labels[ip.lower()] }})
-            {% endif %}
-        </h3>
+    <h3 style="margin-top: 2em;">
+        {{ ip }}
+        {% if labels[ip.lower()] %}
+            ({{ labels[ip.lower()] }})
+        {% endif %}
+    </h3>
 
+    {% if summary_only %}
+        {% set total = vulns | length %}
+        {% set high = vulns | selectattr("cvss", ">= ", 7) | list | length %}
+        {% set cisa = vulns | selectattr("cisa") | list | length %}
+        <p>
+            <strong>{{ total }}</strong> CVEs |
+            <strong>{{ high }}</strong> High/Critical |
+            <strong>{{ cisa }}</strong> CISA-exploited
+        </p>
+    {% else %}
         {% if vulns %}
-            <ul>
-                {% for v in vulns %}
-                <li>
-                    <strong>Port {{ v.port }} ({{ v.service }})</strong><br>
-                    <strong>{{ v.cve_id }}</strong> — {{ v.description }}<br>
-                    <em>CVSS Score:</em> {{ v.cvss }} |
-                    <em>Published:</em> {{ v.published }}
-                    {% if v.cisa %}
-                        <span style="color: red; font-weight: bold;">[CISA Exploited]</span>
-                    {% endif %}
-                </li>
-                {% endfor %}
-            </ul>
+        <ul>
+            {% for v in vulns %}
+            <li>
+                <strong>
+                    {% if v.port %}Port {{ v.port }} ({{ v.service }}){% else %}Service: {{ v.service }}{% endif %}
+                </strong><br>
+                <strong>{{ v.cve_id }}</strong> — {{ v.description }}<br>
+                <em>CVSS Score:</em>
+                <span {% if v.cvss >= 9 %}style="color: red"
+                    {% elif v.cvss >= 7 %}style="color: orange"
+                    {% elif v.cvss >= 4 %}style="color: goldenrod"
+                    {% else %}style="color: gray"
+                    {% endif %}>
+                  {{ v.cvss }}
+              </span>
+                <em>Published:</em> {{ v.published }}
+                {% if v.cisa %}
+                    <span style="color: red; font-weight: bold;">[CISA Exploited]</span>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
         {% else %}
             <p>No vulnerabilities found.</p>
         {% endif %}
+    {% endif %}
     {% endfor %}
 </body>
 </html>

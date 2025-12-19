@@ -1,5 +1,4 @@
 <!-- templates/fingerprints.html -->
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,37 +8,69 @@
 </head>
 <body>
   <h1>Device Fingerprints</h1>
-  <a href="/">← Back to Dashboard</a>
+  <a href="/">&larr; Back to Dashboard</a>
+
+  <div id="column-filters">
+    <strong>Toggle Columns:</strong>
+    <label><input type="checkbox" checked onchange="toggleColumn('ftp')"> FTP</label>
+    <label><input type="checkbox" checked onchange="toggleColumn('smtp')"> SMTP</label>
+    <label><input type="checkbox" checked onchange="toggleColumn('pop3')"> POP3</label>
+    <label><input type="checkbox" checked onchange="toggleColumn('imap')"> IMAP</label>
+    <label><input type="checkbox" checked onchange="toggleColumn('telnet')"> Telnet</label>
+    <label><input type="checkbox" checked onchange="toggleColumn('http')"> HTTP</label>
+    <label><input type="checkbox" checked onchange="toggleColumn('https')"> HTTPS</label>
+  </div>
 
   <table>
     <thead>
       <tr>
         <th>IP</th>
         <th>MAC</th>
-        <th>Label</th>
-        <th>Hostname</th>
         <th>Vendor</th>
+        <th>Hostname</th>
         <th>OS Guess</th>
         <th>SNMP</th>
         <th>SSDP</th>
         <th>NetBIOS</th>
+        <th class="col-ftp">FTP</th>
+        <th class="col-smtp">SMTP</th>
+        <th class="col-pop3">POP3</th>
+        <th class="col-imap">IMAP</th>
+        <th class="col-telnet">Telnet</th>
+        <th class="col-http">HTTP</th>
+        <th class="col-https">HTTPS</th>
       </tr>
     </thead>
     <tbody>
-        {% for ip, info in fingerprints.items() %}
-        <tr>
-          <td>{{ ip }}</td>
-          <td>{{ info.mac or '' }}</td>
-          <td>{{ labels.get(info.mac.lower(), '') if info.mac else '' }}</td>
-          <td>{{ info.hostname or '' }}</td>
-          <td>{{ info.vendor or '' }}</td>
-          <td>{{ info.os_guess or '' }}</td>
-          <td>{{ info.snmp or '' }}</td>
-          <td>{{ info.ssdp or '' }}</td>
-          <td>{{ info.netbios or '' }}</td>
-        </tr>
+      {% for ip, info in fingerprints.items() %}
+      <tr>
+        <td>{{ ip }}</td>
+        <td>{{ info.mac or '' }}</td>
+        <td>{{ info.vendor or '' }}</td>
+        <td>{{ info.hostname or '' }}</td>
+        <td>{{ info.os_guess or '' }}</td>
+        <td>{{ info.snmp or '' }}</td>
+        <td>{{ info.ssdp or '' }}</td>
+        <td>{{ info.netbios or '' }}</td>
+        <td class="col-ftp">{{ info.service_banners.ftp }}</td>
+        <td class="col-smtp">{{ info.service_banners.smtp }}</td>
+        <td class="col-pop3">{{ info.service_banners.pop3 }}</td>
+        <td class="col-imap">{{ info.service_banners.imap }}</td>
+        <td class="col-telnet">{{ info.service_banners.telnet }}</td>
+        <td class="col-http">{{ info.service_banners.http }}</td>
+        <td class="col-https">{{ info.service_banners.https }}</td>
+      </tr>
       {% endfor %}
     </tbody>
   </table>
+
+  <script>
+    function toggleColumn(type) {
+      const cells = document.querySelectorAll(`.col-${type}`);
+      cells.forEach(cell => {
+        cell.style.display = (cell.style.display === 'none') ? '' : 'none';
+      });
+    }
+  </script>
 </body>
 </html>

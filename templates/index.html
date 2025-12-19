@@ -34,6 +34,13 @@
 <body>
     <h1>LAN Monitor Dashboard</h1>
 
+    {% if warning %}
+    <div style="background-color: #ffdddd; color: red; padding: 10px; border: 1px solid red; margin-bottom: 1em;">
+      ⚠️ No devices were detected on the network. You might be on a public or isolated Wi-Fi.
+    </div>
+    {% endif %}
+
+
     <nav style="margin-bottom: 1em;">
         <a href="/">Dashboard</a> |
         <a href="/vulnerabilities">Vulnerabilities</a>

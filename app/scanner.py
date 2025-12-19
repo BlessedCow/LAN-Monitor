@@ -9,10 +9,8 @@ import time
 import requests
 from typing import Optional
 import socket
-
-# Import and load the local OUI‐to‐vendor map (Wireshark “manuf” file fallback)
-from app.oui_lookup import load_manuf_file, lookup_vendor_offline
-load_manuf_file()
+import uuid
+from app.oui_lookup import lookup_vendor, lookup_vendor_offline, load_manuf_file
 
 # Attempt to import Scapy for raw ARP; if unavailable, SCAPY_AVAILABLE = False
 try:
@@ -218,6 +216,22 @@ def scan_network_with_mac(
 
     return results
 
+def get_own_ip() -> str:
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+    except Exception:
+        return socket.gethostbyname(socket.gethostname())
+    finally:
+        s.close()
+
+def get_own_mac() -> str:
+    import uuid
+    mac_int = uuid.getnode()
+    mac_str = ':'.join(f'{(mac_int >> ele) & 0xff:02x}' for ele in range(40, -1, -8))
+    return mac_str
+
 
 if __name__ == "__main__":
     # Quick standalone test: run "python app/scanner.py"
@@ -229,5 +243,15 @@ if __name__ == "__main__":
         max_workers=100,
         arp_timeout=2.0
     )
+ 
+      # --- Step 4: Ensure the scanning device is included ---
+    own_ip = get_own_ip()
+    if own_ip not in results:
+        own_mac = get_own_mac()
+        results[own_ip] = {
+            "mac":     own_mac,
+            "vendor":  lookup_oui_vendor(own_mac),
+            "latency": 0.0
+        }
     for ip, info in sorted(data.items(), key=lambda x: x[1]["latency"]):
         print(f"{ip}    MAC={info['mac']}    Vendor={info['vendor']}    Latency={info['latency']} ms")

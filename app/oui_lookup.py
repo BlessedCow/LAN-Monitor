@@ -1,12 +1,13 @@
 import os
+import csv
 
-# In‐memory map: OUI (6 hex digits) → vendor name
-_manuf_map = {}
+_manuf_map = {}  # Wireshark manuf
+_ieee_map = {}   # IEEE CSV
 
 def load_manuf_file(path=None):
     """
-    Parse the local Wireshark 'manuf' file into _manuf_map.
-    If 'path' is None, defaults to '../oui/manuf' relative to this module.
+    Load Wireshark manuf into _manuf_map.
+    If path is None, defaults to ./oui/manuf
     """
     global _manuf_map
     _manuf_map.clear()
@@ -21,31 +22,61 @@ def load_manuf_file(path=None):
                 line = line.strip()
                 if not line or line.startswith("#"):
                     continue
-
                 parts = line.split()
                 if len(parts) < 2:
                     continue
-
-                raw_oui = parts[0].lower()       # e.g. "00:00:0a"
-                vendor  = " ".join(parts[1:]).strip()
-
-                norm = raw_oui.replace(":", "")[:6]  # "00000a"
+                raw_oui = parts[0].lower()
+                vendor = " ".join(parts[1:]).strip()
+                norm = raw_oui.replace(":", "")[:6]
                 _manuf_map[norm] = vendor
     except FileNotFoundError:
-        # If the file isn’t found, _manuf_map remains empty
         pass
 
-def lookup_vendor_offline(mac: str):
+def load_ieee_csv(path=None):
     """
-    Given a full MAC like "aa:bb:cc:dd:ee:ff", return the vendor
-    from _manuf_map (e.g. "Cisco") or None if not found.
+    Load IEEE OUI CSV into _ieee_map.
+    If path is None, defaults to ./oui/oui.csv
+    """
+    global _ieee_map
+    _ieee_map.clear()
+
+    if path is None:
+        base = os.path.dirname(__file__)
+        path = os.path.join(base, "oui", "oui.csv")
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                mac = row.get("Assignment", "").replace("-", "").upper().strip()
+                vendor = row.get("Organization Name", "").strip()
+                if len(mac) == 6 and vendor:
+                    _ieee_map[mac] = vendor
+    except FileNotFoundError:
+        pass
+
+def lookup_vendor(mac: str):
+    """
+    Try to resolve MAC vendor using:
+    1. Wireshark manuf
+    2. IEEE CSV
+    Returns vendor name or 'Unknown'
     """
     if not mac:
-        return None
+        return "Unknown"
 
-    hexonly = mac.replace(":", "").replace("-", "").lower()
-    if len(hexonly) < 6:
-        return None
+    norm = mac.replace(":", "").replace("-", "").lower()
+    if len(norm) < 6:
+        return "Unknown"
 
-    oui = hexonly[:6]
-    return _manuf_map.get(oui)
+    prefix = norm[:6]
+    return (
+        _manuf_map.get(prefix)
+        or _ieee_map.get(prefix.upper())
+        or "Unknown"
+    )
+
+# Load both OUI sources at import
+load_manuf_file()
+load_ieee_csv()
+lookup_vendor_offline = lookup_vendor
