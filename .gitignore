@@ -1,5 +1,16 @@
 # Ignore Python virtual environments
-__pycache__/
-.env
-.venv
-.venv/
+# Local data / caches / databases
+data/
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# NVD/CISA downloaded feeds
+*.json.gz
+data/*.json
+data/*.csv
+cisa_kev.json
+
+# Runtime scan output (optional)
+open_ports.json
