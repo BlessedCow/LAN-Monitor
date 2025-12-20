@@ -1,10 +1,14 @@
 # Ignore Python virtual environments
 # Local data / caches / databases
+.venv/
+.venv
 data/
 *.db
 *.db-journal
 *.sqlite
 *.sqlite3
+__pycache__/
+*.pyc
 
 # NVD/CISA downloaded feeds
 *.json.gz
