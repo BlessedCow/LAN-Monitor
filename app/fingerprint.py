@@ -1,6 +1,5 @@
 
-# app/fingerprint.py (enhanced)
-# Drop-in replacement adding richer active fingerprints with strict timeouts.
+# app/fingerprint.py
 from __future__ import annotations
 
 import socket
@@ -11,8 +10,6 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
-
-# Optional deps (present in your project already): requests, zeroconf, pysnmp
 import requests
 from xml.etree import ElementTree
 

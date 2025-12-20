@@ -22,7 +22,6 @@ HEADERS = {
     "Accept": "application/json",
 }
 if NVD_API_KEY:
-    # NVD API 2.0 uses this header name
     HEADERS["apiKey"] = NVD_API_KEY
 
 # crude keyword mapping (offline “service guess”)
@@ -233,7 +232,6 @@ def update_from_nvd(days_back: int, kev_set: set[str], max_total: int | None = N
             if not cve_id:
                 continue
 
-            # English description
             descriptions = cve_obj.get("descriptions") or []
             desc = ""
             for d in descriptions:
