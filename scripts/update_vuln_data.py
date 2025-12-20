@@ -22,7 +22,6 @@ HEADERS = {
     "Accept": "application/json",
 }
 if NVD_API_KEY:
-    # NVD API 2.0 uses this header name
     HEADERS["apiKey"] = NVD_API_KEY
 
 # crude keyword mapping (offline “service guess”)
@@ -206,8 +205,7 @@ def update_from_nvd(days_back: int, kev_set: set[str], max_total: int | None = N
     print(f"[*] Querying NVD API 2.0 for last modified window: {start.date()} -> {end.date()}")
 
     start_index = 0
-    
-    results_per_page = 2000  # max allowed by NVD API 2.0
+    results_per_page = 2000
     total_upserted = 0
     rows_buffer = []
     cpe_rows_buffer: list[tuple] = []
@@ -234,7 +232,6 @@ def update_from_nvd(days_back: int, kev_set: set[str], max_total: int | None = N
             if not cve_id:
                 continue
 
-            # English description
             descriptions = cve_obj.get("descriptions") or []
             desc = ""
             for d in descriptions:
@@ -249,10 +246,9 @@ def update_from_nvd(days_back: int, kev_set: set[str], max_total: int | None = N
             metrics = cve_obj.get("metrics") or {}
             score = pick_cvss_score(metrics)
 
-            # Port/service-based mapping (keeps the DB relevant to your current UI logic)
+            # Port/service-based mapping
             service = guess_service(desc)
             if not service:
-                # If you want *only* CPE-based matching later, you can remove this continue.
                 continue
 
             is_exploited = 1 if cve_id.upper() in kev_set else 0
