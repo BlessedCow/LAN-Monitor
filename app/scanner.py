@@ -1,5 +1,4 @@
 # app/scanner.py
-
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import ping3
 import subprocess
@@ -161,20 +160,6 @@ def scan_network_with_mac(
     max_workers: int = 100,
     arp_timeout: float = 2.0
 ) -> dict[str, dict[str, Optional[object]]]:
-    
-    # 1) Ping every IP base_ip{start}..base_ip{end} in parallel → latency_map { ip: latency }.
-    # 2) Attempt raw ARP scan → ip_to_mac. If too few MACs, fallback to OS ARP table.
-    # 3) For each ping-responsive IP:
-    #      mac    = ip_to_mac.get(ip) or None
-    #      vendor = lookup_oui_vendor(mac) if mac else None
-    #      latency = round(latency_sec * 1000, 2)
-    #    Return a dict:
-    #    {
-    #      "192.168.1.5":  { "mac": "aa:bb:cc:dd:ee:ff" or None,
-    #                        "vendor": "Vendor Name" or None,
-    #                        "latency": 12.34 },
-    #      ...
-    #    }
     
     # --- Step 1: Ping sweep ---
     latency_map: dict[str, float] = {}

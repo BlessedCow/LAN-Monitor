@@ -1,5 +1,4 @@
 # app/dashboard.py
-
 from flask import Flask, render_template, request, redirect, send_file, jsonify, Response
 from app.scanner import scan_network_with_mac
 from app.scanner import scan_tcp_ports, scan_udp_ports

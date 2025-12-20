@@ -206,7 +206,6 @@ def update_from_nvd(days_back: int, kev_set: set[str], max_total: int | None = N
     print(f"[*] Querying NVD API 2.0 for last modified window: {start.date()} -> {end.date()}")
 
     start_index = 0
-    
     results_per_page = 2000  # max allowed by NVD API 2.0
     total_upserted = 0
     rows_buffer = []
@@ -249,10 +248,9 @@ def update_from_nvd(days_back: int, kev_set: set[str], max_total: int | None = N
             metrics = cve_obj.get("metrics") or {}
             score = pick_cvss_score(metrics)
 
-            # Port/service-based mapping (keeps the DB relevant to your current UI logic)
+            # Port/service-based mapping
             service = guess_service(desc)
             if not service:
-                # If you want *only* CPE-based matching later, you can remove this continue.
                 continue
 
             is_exploited = 1 if cve_id.upper() in kev_set else 0
