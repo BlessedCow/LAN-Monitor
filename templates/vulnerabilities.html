@@ -1,125 +1,157 @@
+  <!-- vulnerabilities.html 2.0 -->
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Vulnerability Report</title>
-    <link rel="stylesheet" href="/static/style.css">
+  <title>Vulnerability Report</title>
+  <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <h1>Vulnerabilities by Device</h1>
-<p style="margin-top: -10px; font-style: italic; color: gray;">
-    Current mode: 
-    {% if request.args.get('mode') == 'full' %}
-        Full Report (all matching vulnerabilities shown)
+  <h1>Vulnerabilities by Device</h1>
+
+  <p style="margin-top:-10px; font-style:italic; color:gray;">
+    Current mode:
+    {% if mode == "full" %}
+      Full Report
+    {% elif mode == "recent" %}
+      Top 10 Recent
     {% else %}
-        Quick Report (top 10 highest CVSS per service)
+      Top 10 Severity
     {% endif %}
-</p>
+  </p>
 
-    <p>
-        Export:
-        <a href="/export_vulns/json">JSON</a> |
-        <a href="/export_vulns/csv">CSV</a>
-    </p>
+  <p>
+    Export:
+    <a href="/export_vulns/json">JSON</a> |
+    <a href="/export_vulns/csv">CSV</a>
+  </p>
 
-    <nav>
-        <a href="/">← Dashboard</a>
-        &nbsp;|&nbsp;
-        <a href="/scan_all_ports">Scan All Devices</a>
-        &nbsp;|&nbsp;
-        <form method="post" action="/clear_ports" style="display:inline;">
-            <button type="submit" style="color: red;">Clear Scan Results</button>
-        </form>
-    </nav>
+  <nav style="margin-bottom: 1em;">
+    <a href="/">← Dashboard</a>
+    &nbsp;|&nbsp;
+    <a href="/scan_all_ports">Scan All Devices</a>
 
-<!-- Filter Toggles -->
-<form method="get" style="margin-bottom: 1em; margin-top: 1em;">
-    <label>Min CVSS Score:
-        <input type="number" name="min_cvss" step="0.1" min="0" max="10" value="{{ request.args.get('min_cvss', '0') }}">
-    </label>
-    <label style="margin-left: 1em;">
-        <input type="checkbox" name="cisa" value="true" {% if request.args.get('cisa') == 'true' %}checked{% endif %}>
-        Show only CISA-exploited
-    </label>
-    <label style="margin-left: 1em;">
-        <input type="checkbox" name="sort" value="true" {% if sort_desc %}checked{% endif %}>
-        Sort by CVSS (High → Low)
-    </label>
-    <label style="margin-left: 1em;">
-        <input type="checkbox" name="summary" value="true" {% if summary_only %}checked{% endif %}>
-        Show Summary Only
-    </label>
-    <label style="margin-left: 1em;">
-        Mode:
-        <label style="margin-left: 1em;">
-            Mode:
-            <select name="mode">
-                <option value="severity" {% if request.args.get('mode','severity') == 'severity' %}selected{% endif %}>
-                    Top 10 Severity
-                </option>
-                <option value="recent" {% if request.args.get('mode') == 'recent' %}selected{% endif %}>
-                    Top 10 Recent
-                </option>
-                <option value="full" {% if request.args.get('mode') == 'full' %}selected{% endif %}>
-                    Full Report
-                </option>
-            </select>
-          </label>
-    <button type="submit">Apply Filters</button>
-</form>
+    &nbsp;|&nbsp;
 
-    <!-- IP or MAC-based single scan -->
-    <form method="post" action="/scan_single" style="margin-bottom: 2em;">
-        <label>Scan single device by IP or MAC:
-            <input type="text" name="ip_or_mac" placeholder="192.168.1.10 or AA:BB:CC:DD:EE:FF">
-        </label>
-        <button type="submit">Scan Device</button>
+    <!-- Clear results -->
+    <form method="post" action="/clear_ports" style="display:inline;">
+      <button type="submit" style="color:red;">Clear Scan Results</button>
     </form>
 
-    {% for ip, vulns in results.items() %}
-    <h3 style="margin-top: 2em;">
-        {{ ip }}
-        {% if labels[ip.lower()] %}
-            ({{ labels[ip.lower()] }})
-        {% endif %}
+    &nbsp;|&nbsp;
+
+    <!-- Scan selected device (dropdown avoids IP/MAC crash) -->
+    <form method="post" action="/scan_single" style="display:inline;">
+      <label for="ip_or_mac" style="margin-left: 0.5em;">Scan device:</label>
+      <select name="ip_or_mac" id="ip_or_mac">
+        {% for ip, display in device_choices %}
+          <option value="{{ ip }}">{{ display }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit">Scan Ports + CVEs</button>
+    </form>
+  </nav>
+
+  <!-- Filters -->
+  <form method="get" style="margin-bottom: 1.2em;">
+    <label>Min CVSS:
+      <input type="number" name="min_cvss" step="0.1" min="0" max="10"
+             value="{{ request.args.get('min_cvss','0') }}">
+    </label>
+
+    <label style="margin-left: 1em;">
+      <input type="checkbox" name="cisa" value="true"
+             {% if request.args.get('cisa') == 'true' %}checked{% endif %}>
+      CISA exploited only
+    </label>
+
+    <label style="margin-left: 1em;">
+      <input type="checkbox" name="sort" value="true"
+             {% if sort_desc %}checked{% endif %}>
+      Sort by CVSS (High → Low)
+    </label>
+
+    <label style="margin-left: 1em;">
+      <input type="checkbox" name="summary" value="true"
+             {% if summary_only %}checked{% endif %}>
+      Summary only
+    </label>
+
+    <label style="margin-left: 1em;">
+      Mode:
+      <select name="mode">
+        <option value="severity" {% if mode == "severity" %}selected{% endif %}>Top 10 Severity</option>
+        <option value="recent" {% if mode == "recent" %}selected{% endif %}>Top 10 Recent</option>
+        <option value="full" {% if mode == "full" %}selected{% endif %}>Full Report</option>
+      </select>
+    </label>
+
+    <button type="submit" style="margin-left: 1em;">Apply</button>
+  </form>
+
+  <form method="post" action="/scan_single" style="margin-bottom: 2em;">
+    <label>Scan by IP or MAC:
+      <input type="text" name="ip_or_mac" placeholder="192.168.1.10 or AA:BB:CC:DD:EE:FF">
+    </label>
+    <button type="submit">Scan</button>
+  </form>
+  
+  <!-- Display results -->
+  {% for ip, vulns in results.items() %}
+    <h3>
+  {{ ip }}
+  {% if ip_to_label.get(ip) %}
+    ({{ ip_to_label.get(ip) }})
+  {% endif %}
     </h3>
 
     {% if summary_only %}
-        {% set total = vulns | length %}
-        {% set high = vulns | selectattr("cvss", ">= ", 7) | list | length %}
-        {% set cisa = vulns | selectattr("cisa") | list | length %}
-        <p>
-            <strong>{{ total }}</strong> CVEs |
-            <strong>{{ high }}</strong> High/Critical |
-            <strong>{{ cisa }}</strong> CISA-exploited
-        </p>
+      {% set total = vulns|length %}
+      {% set high = 0 %}
+      {% set exploited = 0 %}
+      {% for v in vulns %}
+        {% if (v.cvss|float) >= 7 %}{% set high = high + 1 %}{% endif %}
+        {% if v.cisa %}{% set exploited = exploited + 1 %}{% endif %}
+      {% endfor %}
+
+      <p>
+        <strong>{{ total }}</strong> CVEs |
+        <strong>{{ high }}</strong> High/Critical |
+        <strong>{{ exploited }}</strong> CISA-exploited
+      </p>
     {% else %}
-        {% if vulns %}
+      {% if vulns %}
         <ul>
-            {% for v in vulns %}
-            <li>
-                <strong>
-                    {% if v.port %}Port {{ v.port }} ({{ v.service }}){% else %}Service: {{ v.service }}{% endif %}
-                </strong><br>
-                <strong>{{ v.cve_id }}</strong> — {{ v.description }}<br>
-                <em>CVSS Score:</em>
-                <span {% if v.cvss >= 9 %}style="color: red"
-                    {% elif v.cvss >= 7 %}style="color: orange"
-                    {% elif v.cvss >= 4 %}style="color: goldenrod"
-                    {% else %}style="color: gray"
-                    {% endif %}>
-                  {{ v.cvss }}
-              </span>
-                <em>Published:</em> {{ v.published }}
-                {% if v.cisa %}
-                    <span style="color: red; font-weight: bold;">[CISA Exploited]</span>
+          {% for v in vulns %}
+            <li style="margin-bottom: 0.75em;">
+              <strong>
+                {% if v.port %}Port {{ v.port }} ({{ v.service }}){% else %}Service: {{ v.service }}{% endif %}
+              </strong><br>
+
+              <strong>{{ v.cve_id }}</strong> — {{ v.description }}<br>
+
+              <em>CVSS:</em>
+              {% set score = (v.cvss|float) %}
+              <span
+                {% if score >= 9 %}style="color:red"
+                {% elif score >= 7 %}style="color:orange"
+                {% elif score >= 4 %}style="color:goldenrod"
+                {% else %}style="color:gray"
                 {% endif %}
+              >{{ v.cvss }}</span>
+
+              <em>Published:</em> {{ v.published }}
+
+              {% if v.cisa %}
+                <span style="color:red; font-weight:bold;">[CISA Exploited]</span>
+              {% endif %}
             </li>
-            {% endfor %}
+          {% endfor %}
         </ul>
-        {% else %}
-            <p>No vulnerabilities found.</p>
-        {% endif %}
+      {% else %}
+        <p>No vulnerabilities found.</p>
+      {% endif %}
     {% endif %}
-    {% endfor %}
+  {% endfor %}
+
 </body>
 </html>

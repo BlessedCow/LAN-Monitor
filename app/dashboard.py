@@ -5,6 +5,7 @@ from app.scanner import scan_tcp_ports, scan_udp_ports
 from app.scanner import get_own_ip
 from app.utils import load_labels, save_labels
 from app.utils import load_open_ports, save_open_ports
+from app.utils import save_last_scan, load_last_scan
 from app.vuln_lookup import PORT_SERVICE_MAP, query_local_vulns, load_cisa_kev
 from app.fingerprint import fingerprint_all
 import platform
@@ -16,8 +17,21 @@ import io
 import csv
 from typing import Optional
 
-
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
+
+def build_device_choices():
+    scan = load_last_scan() or {}
+    labels = load_labels() or {}
+    choices = []
+    
+    for ip, info in scan.items():
+        mac = (info.get("mac") or "").lower()
+        vendor = info.get("vendor") or ""
+        label = (load_labels() or {}).get(mac, "")
+        display = f"{ip} | {label or vendor or mac or 'Unknown'}"
+        choices.append((ip, display))
+    choices.sort(key=lambda x: x[0])
+    return choices
 
 def get_current_ssid() -> str:
     system = platform.system().lower()
@@ -30,6 +44,12 @@ def get_current_ssid() -> str:
                 text=True,
                 encoding="utf-8",
             )
+
+            # If not connected to Wi-Fi says "State: "
+            state = re.search(r"^\s*State\s*:\s*(.+)$", output, re.MULTILINE)
+            if state and state.group(1).strip().lower() != "connected":
+                return "Not Wi-Fi"
+
             match = re.search(r"^\s*SSID\s*:\s*(.+)$", output, re.MULTILINE)
             if match:
                 ssid = match.group(1).strip()
@@ -37,7 +57,7 @@ def get_current_ssid() -> str:
                     return ssid
         except Exception:
             pass
-
+        
         try:
             ipcfg = subprocess.check_output(["ipconfig"], stderr=subprocess.DEVNULL, text=True, encoding="utf-8")
             blocks = re.split(r"Ethernet adapter ", ipcfg)
@@ -50,7 +70,7 @@ def get_current_ssid() -> str:
         except Exception:
             pass
 
-        return "Unknown"
+        return "Unknown / Wired"
 
     elif system == "darwin":
         try:
@@ -111,6 +131,8 @@ def index():
     # sort by latency and rename to the variable your template expects
     sorted_list = sorted(devices_info.items(), key=lambda item: item[1].get("latency", 999999))
     devices = {ip: info for ip, info in sorted_list}
+    # persist last scan
+    save_last_scan(devices)
 
     ssid = get_current_ssid()
     labels = load_labels()
@@ -124,6 +146,9 @@ def index():
         warning=warning,
         own_ip=own_ip
     )
+    
+    
+    
 @app.route("/set_label", methods=["POST"])
 def set_label():
     mac = request.form.get("mac", "").lower()
@@ -202,6 +227,9 @@ def fingerprints():
 def vulnerabilities():
     own_ip = get_own_ip()
 
+    # Build dropdown list once
+    device_choices = build_device_choices()
+
     # Safe min_cvss parsing (handles "" and junk)
     raw_min = (request.args.get("min_cvss") or "").strip()
     try:
@@ -214,8 +242,10 @@ def vulnerabilities():
     sort_desc = request.args.get("sort") == "true"
     summary_only = request.args.get("summary") == "true"
 
-    max_results = 200  # pull plenty, then sort/trim ourselves
+    # Pull plenty, then we sort/trim ourselves
+    max_results = 200
 
+    # IMPORTANT: no trailing commas here
     port_data = load_open_ports() or {}
     labels = load_labels() or {}
     results = {}
@@ -226,14 +256,37 @@ def vulnerabilities():
         except Exception:
             return 0.0
 
-    def safe_date_key(s):
+    def safe_date_key(s: str):
         # expects "YYYY-MM-DD" or ""
         return (s or "")
 
-    for ip, ports in port_data.items():
+    # Build IP -> label (labels are keyed by MAC)
+    # This assumes scan_network_with_mac returns {ip: {"mac": "..."}}
+    ip_to_label = {}
+    try:
+        scan = scan_network_with_mac()
+        for ip, info in (scan or {}).items():
+            mac = (info.get("mac") or "").lower()
+            if mac and mac in labels:
+                ip_to_label[ip] = labels.get(mac, "")
+    except Exception:
+        ip_to_label = {}
+
+    for ip, ports in (port_data or {}).items():
         results[ip] = []
 
-        for port in (ports.get("tcp", []) + ports.get("udp", [])):
+        if not isinstance(ports, dict):
+            continue
+
+        tcp_ports = ports.get("tcp") or []
+        udp_ports = ports.get("udp") or []
+
+        if not isinstance(tcp_ports, list):
+            tcp_ports = []
+        if not isinstance(udp_ports, list):
+            udp_ports = []
+
+        for port in (tcp_ports + udp_ports):
             service = PORT_SERVICE_MAP.get(port)
             if not service:
                 continue
@@ -243,14 +296,14 @@ def vulnerabilities():
                 min_score=min_cvss,
                 cisa_only=cisa_only,
                 max_results=max_results
-            )
+            ) or []
 
             for cve in cves:
                 results[ip].append({
                     "port": port,
                     "service": service,
-                    "cve_id": cve.get("id") or cve.get("cve_id"),
-                    "description": cve.get("desc") or cve.get("description"),
+                    "cve_id": cve.get("id") or cve.get("cve_id") or "",
+                    "description": cve.get("desc") or cve.get("description") or "",
                     "cvss": safe_float(cve.get("score") or cve.get("cvss") or 0),
                     "published": cve.get("published") or "",
                     "cisa": bool(cve.get("cisa") or cve.get("is_exploited") or 0),
@@ -270,13 +323,17 @@ def vulnerabilities():
     return render_template(
         "vulnerabilities.html",
         results=results,
-        labels=labels,
+        device_choices=device_choices,
+        ip_to_label=ip_to_label,
+        mode=mode,
         sort_desc=sort_desc,
         summary_only=summary_only,
-        own_ip=own_ip
+        own_ip=own_ip,
+        request=request,
     )
 @app.route("/scan_all_ports")
 def scan_all_ports():
+    
     devices = scan_network_with_mac()
     port_data = {}
 
@@ -326,92 +383,61 @@ def clear_ports():
 
 @app.route('/export/json')
 def export_json():
-    try:
-        port_data = load_open_ports()
-        scan_data = scan_network_with_mac()
-        labels = load_labels()
+    port_data = load_open_ports()
+    scan_data = scan_network_with_mac()
+    labels = load_labels()
 
-        export_data = {}
+    export_data = {}
+    for ip, ports in port_data.items():
+        mac = scan_data.get(ip, {}).get("mac", "unknown").lower()
+        label = labels.get(mac, "")
+        export_data[ip] = {
+            "mac": mac,
+            "label": label,
+            "ports": ports,
+            "vendor": scan_data.get(ip, {}).get("vendor"),
+            "latency": scan_data.get(ip, {}).get("latency"),
+        }
 
-        for ip, ports in port_data.items():
-            mac = scan_data.get(ip, {}).get("mac", "unknown").lower()
-            label = labels.get(mac, "")
-
-            export_data[ip] = {
-                "mac": mac,
-                "label": label,
-                "ports": ports
-            }
-
-        return Response(
-            json.dumps(export_data, indent=2),
-            mimetype='application/json',
-            headers={"Content-Disposition": "attachment;filename=vulnerability_report.json"}
-        )
-
-    except Exception as e:
-        return f"Error exporting JSON: {str(e)}", 500
+        buf = io.BytesIO(json.dumps(export_data, indent=2).encode("utf-8"))
+        buf.seek(0)
+        return send_file(
+            buf,
+            mimetype="application/json",
+            as_attachment=True,
+            download_name="vulnerability_report.json"
+    )
 
 @app.route('/export/csv')
 def export_csv():
-    try:
-        port_data = load_open_ports()
-        scan_data = scan_network_with_mac()
-        labels = load_labels()
-        cisa_kev = load_cisa_kev()
+    port_data = load_open_ports()
+    scan_data = scan_network_with_mac()
+    labels = load_labels()
+    cisa_kev = load_cisa_kev()
 
-        output = io.StringIO()
-        writer = csv.writer(output)
-        writer.writerow([
-            "IP Address", "MAC Address", "Label", "Port", "Service",
-            "CVE ID", "CVSS Score", "Published", "Summary", "CISA Exploited"
-        ])
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["IP", "MAC", "Label", "Vendor", "Latency_ms", "Protocol", "Port"])
 
-        for ip, ports in port_data.items():
-            mac = scan_data.get(ip, {}).get("mac", "unknown").lower()
-            label = labels.get(mac, "")
-            for port in ports.get("tcp", []) + ports.get("udp", []):
-                service = PORT_SERVICE_MAP.get(port, f"port_{port}")
-                cves = query_local_vulns(service, max_score=10, max_results=5)
-
-                if cves:
-                    for cve in cves:
-                        is_exploited = cve["cve_id"].upper() in cisa_kev
-                        writer.writerow([
-                            ip,
-                            mac,
-                            label,
-                            port,
-                            service,
-                            cve.get("cve_id", ""),
-                            cve.get("cvss", ""),
-                            cve.get("published", ""),
-                            cve.get("description", "").replace('\n', ' ').strip(),
-                            "Yes" if is_exploited else "No"
-                        ])
-                else:
-                    writer.writerow([
-                        ip,
-                        mac,
-                        label,
-                        port,
-                        service,
-                        "",
-                        "",
-                        "",
-                        "No known CVEs",
-                        ""
-                    ])
-
-        output.seek(0)
-        return Response(
-            output,
-            mimetype='text/csv',
-            headers={"Content-Disposition": "attachment;filename=vulnerability_report.csv"}
-        )
-
-    except Exception as e:
-        return f"Error exporting CSV: {str(e)}", 500
-
+    for ip, ports in port_data.items():
+        mac = scan_data.get(ip, {}).get("mac", "unknown").lower()
+        label = labels.get(mac, "")
+        vendor = scan_data.get(ip, {}).get("vendor") or ""
+        latency = scan_data.get(ip, {}).get("latency") or ""
+            
+        for p in ports.get("tcp", []):
+            writer.writerow([ip, mac, label, vendor, latency, "tcp", p])
+        for p in ports.get("udp", []):            
+            writer.writerow([ip, mac, label, vendor, latency, "udp", p])
+    
+    data = output.getvalue().encode("utf-8")
+    buf = io.BytesIO(data)
+    buf.seek(0)
+    return send_file(
+        buf,
+        mimetype="text/csv",
+        as_attachment=True,
+        download_name="vulnerability_report.csv"
+    )
 def run():
     app.run(host="0.0.0.0", port=5000)
